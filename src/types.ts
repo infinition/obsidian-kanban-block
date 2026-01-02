@@ -8,6 +8,11 @@ export interface TodoItem {
 	children: string[]; // Indented lines that belong to this item
 }
 
+export interface ParseResult {
+	items: TodoItem[];
+	ignoredLines: string[]; // Non-checkbox lines that couldn't be parsed
+}
+
 export interface KanbanColumn {
 	state: TodoState;
 	title: string;

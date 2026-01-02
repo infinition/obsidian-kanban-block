@@ -1,8 +1,12 @@
+/* Kanban Wrapper */
+.kanban-wrapper {
+	padding: 8px 0;
+}
+
 /* Kanban Board Container */
 .kanban-board {
 	display: flex;
 	gap: 12px;
-	padding: 8px 0;
 	overflow-x: auto;
 }
 
@@ -142,6 +146,13 @@
 	font-style: italic;
 	padding: 16px;
 	text-align: center;
+}
+
+/* Warning message */
+.kanban-warning {
+	font-size: 0.8em;
+	color: var(--text-warning);
+	margin-bottom: 8px;
 }
 
 /* Add button */

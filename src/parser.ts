@@ -1,4 +1,4 @@
-import { TodoItem, TodoState } from './types';
+import { TodoItem, TodoState, ParseResult } from './types';
 
 // Match any single character in checkbox
 const TODO_REGEX = /^(-\s*\[(.)\]\s*)(.*)$/;
@@ -24,11 +24,23 @@ function getIndentLevel(line: string): number {
 	return match ? match[1]!.length : 0;
 }
 
-export function parseTodoBlock(source: string): TodoItem[] {
-	const lines = source.split('\n');
+function stripCommonIndent(lines: string[]): string[] {
+	const nonEmptyLines = lines.filter(line => line.trim() !== '');
+	if (nonEmptyLines.length === 0) return lines;
+
+	const minIndent = Math.min(...nonEmptyLines.map(getIndentLevel));
+	if (minIndent === 0) return lines;
+
+	return lines.map(line => line.slice(minIndent));
+}
+
+export function parseTodoBlock(source: string): ParseResult {
+	const rawLines = source.split('\n');
+	const lines = stripCommonIndent(rawLines);
 	const items: TodoItem[] = [];
+	const ignoredLines: string[] = [];
 	let currentItem: TodoItem | null = null;
-	let currentIndent = 0;
+	let baseIndent = 0;
 
 	for (const line of lines) {
 		const indent = getIndentLevel(line);
@@ -46,18 +58,20 @@ export function parseTodoBlock(source: string): TodoItem[] {
 					originalMarker: marker,
 					children: [],
 				};
-				currentIndent = 0;
+				baseIndent = 0;
 				items.push(currentItem);
 			}
-		} else if (currentItem && line.trim() !== '') {
+		} else if (currentItem && indent > baseIndent && line.trim() !== '') {
 			// Indented content belongs to current item
-			if (indent > currentIndent || currentItem.children.length > 0) {
-				currentItem.children.push(line);
-			}
+			currentItem.children.push(line);
+		} else if (line.trim() !== '') {
+			// Non-checkbox line at top level - track it
+			ignoredLines.push(line);
+			currentItem = null; // Reset so subsequent indented lines don't attach
 		}
 	}
 
-	return items;
+	return { items, ignoredLines };
 }
 
 export function itemToMarkdown(item: TodoItem): string {
@@ -72,6 +86,10 @@ export function itemToMarkdown(item: TodoItem): string {
 	return mainLine + '\n' + item.children.join('\n');
 }
 
-export function itemsToMarkdown(items: TodoItem[]): string {
-	return items.map(itemToMarkdown).join('\n');
+export function itemsToMarkdown(items: TodoItem[], ignoredLines: string[] = []): string {
+	const todoMarkdown = items.map(itemToMarkdown).join('\n');
+	if (ignoredLines.length === 0) {
+		return todoMarkdown;
+	}
+	return ignoredLines.join('\n') + '\n' + todoMarkdown;
 }

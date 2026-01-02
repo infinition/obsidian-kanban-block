@@ -2,7 +2,7 @@
 
 A simple Obsidian plugin that renders todo checkboxes as an interactive kanban board.
 
-![Demo](demo.gif)
+[Video of how this works in Obsidian](video.mov)
 
 ## Usage
 
@@ -10,15 +10,12 @@ Create a `todo` code block with checkbox items:
 
 ~~~markdown
 ```todo
-- [ ] Touch grass #health
-- [ ] Fix "**one small bug**" (day 3)
-- [ ] Reply to [[That Important Email|that email]] from 2 weeks ago
-- [ ] Read [[Books/Atomic Habits|Atomic Habits]] #someday
-- [/] Organize notes (again) #obsidian
-- [/] Learn `vim` (year 7)
-- [x] Install *another* Obsidian plugin
-- [x] Pretend to understand [[regex]]
-- [x] Add task to **todo list** #productivity
+- [ ] Review [[Design Doc]] with team
+- [ ] Write unit tests for `auth.ts`
+- [/] Meet with the team
+- [x] Set up CI/CD pipeline
+- [x] Code review for [[PR-123]]
+- [x] Refactor database queries #backend
 ```
 ~~~
 
@@ -37,8 +34,13 @@ This renders as a 3-column kanban board:
 - Drag and drop between columns
 - Reorder within columns
 - Changes sync back to markdown in real-time
+- "+" buttons to add new items in columns
+- Double click on item to edit it
+- Leave empty text in item to remove it
 - Supports wiki links, bold, italic, code, and tags
 - Nested items move with their parent (shown with `+N` badge)
+- Detect non-checkbox lines and ignore them (with warning)
+- Plugin settings where column names can be changed
 
 ## Manual Installation
 

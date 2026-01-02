@@ -1,12 +1,27 @@
 import { Plugin, MarkdownPostProcessorContext, MarkdownView } from 'obsidian';
 import { parseTodoBlock } from './parser';
 import { KanbanBoard } from './kanban';
+import { KanbanBlockSettings, DEFAULT_SETTINGS, KanbanBlockSettingTab } from './settings';
 
 export default class KanbanBlockPlugin extends Plugin {
-	onload() {
+	settings: KanbanBlockSettings;
+
+	async onload() {
+		await this.loadSettings();
+
+		this.addSettingTab(new KanbanBlockSettingTab(this.app, this));
+
 		this.registerMarkdownCodeBlockProcessor('todo', (source, el, ctx) => {
 			this.processKanbanBlock(source, el, ctx);
 		});
+	}
+
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
 	}
 
 	private processKanbanBlock(
@@ -14,16 +29,11 @@ export default class KanbanBlockPlugin extends Plugin {
 		el: HTMLElement,
 		ctx: MarkdownPostProcessorContext
 	): void {
-		const items = parseTodoBlock(source);
+		const { items, ignoredLines } = parseTodoBlock(source);
 
-		if (items.length === 0) {
-			el.createDiv({ text: 'No todo items found', cls: 'kanban-empty' });
-			return;
-		}
-
-		new KanbanBoard(el, items, (newMarkdown) => {
+		new KanbanBoard(el, items, ignoredLines, (newMarkdown) => {
 			this.updateSource(ctx, source, newMarkdown);
-		}, this.app, this, ctx.sourcePath);
+		}, this.app, this, ctx.sourcePath, this.settings.columnNames);
 	}
 
 	private updateSource(

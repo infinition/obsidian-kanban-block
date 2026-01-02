@@ -2,41 +2,54 @@ import { App, Component, MarkdownRenderer } from 'obsidian';
 import { TodoItem, TodoState, KanbanColumn } from './types';
 import { itemsToMarkdown } from './parser';
 
-const COLUMNS: { state: TodoState; title: string }[] = [
-	{ state: 'todo', title: 'To Do' },
-	{ state: 'in-progress', title: 'In Progress' },
-	{ state: 'done', title: 'Done' },
-];
+export interface ColumnNames {
+	todo: string;
+	inProgress: string;
+	done: string;
+}
+
+const STATE_ORDER: TodoState[] = ['todo', 'in-progress', 'done'];
 
 export class KanbanBoard {
 	private container: HTMLElement;
 	private items: TodoItem[];
+	private ignoredLines: string[];
 	private onUpdate: (markdown: string) => void;
 	private app: App;
 	private component: Component;
 	private sourcePath: string;
+	private columnNames: ColumnNames;
 	private draggedItem: TodoItem | null = null;
 	private draggedElement: HTMLElement | null = null;
 
 	constructor(
 		container: HTMLElement,
 		items: TodoItem[],
+		ignoredLines: string[],
 		onUpdate: (markdown: string) => void,
 		app: App,
 		component: Component,
-		sourcePath: string
+		sourcePath: string,
+		columnNames: ColumnNames
 	) {
 		this.container = container;
 		this.items = items;
+		this.ignoredLines = ignoredLines;
 		this.onUpdate = onUpdate;
 		this.app = app;
 		this.component = component;
 		this.sourcePath = sourcePath;
+		this.columnNames = columnNames;
 		this.render();
 	}
 
 	private getColumns(): KanbanColumn[] {
-		return COLUMNS.map(col => ({
+		const columns: { state: TodoState; title: string }[] = [
+			{ state: 'todo', title: this.columnNames.todo },
+			{ state: 'in-progress', title: this.columnNames.inProgress },
+			{ state: 'done', title: this.columnNames.done },
+		];
+		return columns.map(col => ({
 			...col,
 			items: this.items.filter(item => item.state === col.state),
 		}));
@@ -44,16 +57,24 @@ export class KanbanBoard {
 
 	private render(): void {
 		this.container.empty();
-		this.container.addClass('kanban-board');
+		this.container.addClass('kanban-wrapper');
 
+		if (this.ignoredLines.length > 0) {
+			this.container.createDiv({
+				cls: 'kanban-warning',
+				text: '⚠ Some lines are not checkboxes and may be lost on edit.'
+			});
+		}
+
+		const board = this.container.createDiv({ cls: 'kanban-board' });
 		const columns = this.getColumns();
 		for (const column of columns) {
-			this.renderColumn(column);
+			this.renderColumn(board, column);
 		}
 	}
 
-	private renderColumn(column: KanbanColumn): void {
-		const colEl = this.container.createDiv({ cls: 'kanban-column' });
+	private renderColumn(board: HTMLElement, column: KanbanColumn): void {
+		const colEl = board.createDiv({ cls: 'kanban-column' });
 		colEl.dataset['state'] = column.state;
 
 		const header = colEl.createDiv({ cls: 'kanban-column-header' });
@@ -225,7 +246,7 @@ export class KanbanBoard {
 				this.items.splice(lastSameState.idx + 1, 0, item);
 			} else {
 				// Find position based on column order
-				const stateOrder = COLUMNS.map(c => c.state);
+				const stateOrder = STATE_ORDER;
 				const targetStateIndex = stateOrder.indexOf(newState);
 
 				let insertIndex = 0;
@@ -241,7 +262,7 @@ export class KanbanBoard {
 
 		// Re-render and notify
 		this.render();
-		this.onUpdate(itemsToMarkdown(this.items));
+		this.onUpdate(itemsToMarkdown(this.items, this.ignoredLines));
 	}
 
 	private addNewItem(state: TodoState): void {
@@ -254,7 +275,7 @@ export class KanbanBoard {
 		};
 
 		// Find position to insert based on state order
-		const stateOrder = COLUMNS.map(c => c.state);
+		const stateOrder = STATE_ORDER;
 		const targetStateIndex = stateOrder.indexOf(state);
 
 		let insertIndex = 0;
@@ -305,7 +326,7 @@ export class KanbanBoard {
 				this.items.splice(index, 1);
 			}
 			this.render();
-			this.onUpdate(itemsToMarkdown(this.items));
+			this.onUpdate(itemsToMarkdown(this.items, this.ignoredLines));
 		};
 
 		const save = () => {
@@ -316,7 +337,7 @@ export class KanbanBoard {
 			} else {
 				item.text = newText;
 				this.render();
-				this.onUpdate(itemsToMarkdown(this.items));
+				this.onUpdate(itemsToMarkdown(this.items, this.ignoredLines));
 			}
 		};
 
