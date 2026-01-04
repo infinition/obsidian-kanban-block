@@ -1,12 +1,9 @@
 import { App, Component, MarkdownRenderer } from 'obsidian';
 import { TodoItem, TodoState, KanbanColumn } from './types';
 import { itemsToMarkdown } from './parser';
-
-export interface ColumnNames {
-	todo: string;
-	inProgress: string;
-	done: string;
-}
+import { KanbanSuggest } from './suggest';
+import { ColumnNames } from './settings';
+import { t, Language } from './i18n';
 
 const STATE_ORDER: TodoState[] = ['todo', 'in-progress', 'done'];
 
@@ -14,25 +11,31 @@ export class KanbanBoard {
 	private container: HTMLElement;
 	private items: TodoItem[];
 	private ignoredLines: string[];
-	private onUpdate: (markdown: string) => void;
+	private onUpdate: (newMarkdown: string, oldMarkdown: string) => void | Promise<void>;
 	private app: App;
 	private component: Component;
 	private sourcePath: string;
 	private columnNames: ColumnNames;
 	private centerBoard: boolean;
+	private language: Language;
+	private deleteDelay: number;
 	private draggedItem: TodoItem | null = null;
 	private draggedElement: HTMLElement | null = null;
+	private lastMarkdown: string;
+	private dragOutsideStartTime: number | null = null;
 
 	constructor(
 		container: HTMLElement,
 		items: TodoItem[],
 		ignoredLines: string[],
-		onUpdate: (markdown: string) => void,
+		onUpdate: (newMarkdown: string, oldMarkdown: string) => void | Promise<void>,
 		app: App,
 		component: Component,
 		sourcePath: string,
 		columnNames: ColumnNames,
-		centerBoard: boolean
+		centerBoard: boolean,
+		language: Language,
+		deleteDelay: number
 	) {
 		this.container = container;
 		this.items = items;
@@ -43,7 +46,31 @@ export class KanbanBoard {
 		this.sourcePath = sourcePath;
 		this.columnNames = columnNames;
 		this.centerBoard = centerBoard;
+		this.language = language;
+		this.deleteDelay = deleteDelay;
+		this.lastMarkdown = itemsToMarkdown(this.items, this.ignoredLines);
+
 		this.render();
+		this.setupBoardEvents();
+	}
+
+	private setupBoardEvents(): void {
+		// Track when dragging outside the board
+		this.container.addEventListener('dragover', (e) => {
+			// If we are over the container but NOT over a column, we are "outside" valid drop zones
+			// but still within the board's visual area. 
+			// Actually, the user likely means "outside the board element".
+		});
+
+		// We'll use the window or workspace events if needed, but let's try container first.
+	}
+
+	private async triggerUpdate(): Promise<void> {
+		const newMarkdown = itemsToMarkdown(this.items, this.ignoredLines);
+		if (newMarkdown !== this.lastMarkdown) {
+			await this.onUpdate(newMarkdown, this.lastMarkdown);
+			this.lastMarkdown = newMarkdown;
+		}
 	}
 
 	private getColumns(): KanbanColumn[] {
@@ -124,18 +151,28 @@ export class KanbanBoard {
 			});
 		}
 
-		card.addEventListener('dragstart', (e) => this.handleDragStart(e, item, card));
-		card.addEventListener('dragend', () => this.handleDragEnd());
-		card.addEventListener('dblclick', (e) => {
+		card.addEventListener('dragstart', (e: DragEvent) => this.handleDragStart(e, item, card));
+		card.addEventListener('dragend', (e: DragEvent) => this.handleDragEnd(e));
+		card.addEventListener('dblclick', (e: MouseEvent) => {
 			e.preventDefault();
 			this.startEditing(card, item);
 		});
+
+		// Handle clicks on links and tags
+		card.addEventListener('click', (e: MouseEvent) => {
+			const target = e.target as HTMLElement;
+			if (target.closest('.internal-link') || target.closest('.tag')) {
+				// Let Obsidian handle the click
+				return;
+			}
+		});
 	}
 
-	private handleDragStart(e: DragEvent, item: TodoItem, element: HTMLElement): void {
+	private handleDragStart(e: DragEvent, item: TodoItem, el: HTMLElement): void {
 		this.draggedItem = item;
-		this.draggedElement = element;
-		element.addClass('kanban-card-dragging');
+		this.draggedElement = el;
+		this.dragOutsideStartTime = Date.now(); // Initialize
+		el.addClass('kanban-card-dragging');
 
 		if (e.dataTransfer) {
 			e.dataTransfer.effectAllowed = 'move';
@@ -143,12 +180,22 @@ export class KanbanBoard {
 		}
 	}
 
-	private handleDragEnd(): void {
+	private handleDragEnd(e: DragEvent): void {
 		if (this.draggedElement) {
 			this.draggedElement.removeClass('kanban-card-dragging');
 		}
+
+		// If dropEffect is 'none', it was dropped outside a valid drop zone
+		if (e.dataTransfer?.dropEffect === 'none' && this.draggedItem && this.dragOutsideStartTime) {
+			const timeOutside = (Date.now() - this.dragOutsideStartTime) / 1000;
+			if (timeOutside >= this.deleteDelay) {
+				this.deleteItem(this.draggedItem);
+			}
+		}
+
 		this.draggedItem = null;
 		this.draggedElement = null;
+		this.dragOutsideStartTime = null;
 
 		// Remove all drag-over states
 		this.container.querySelectorAll('.kanban-drag-over').forEach(el => {
@@ -159,10 +206,22 @@ export class KanbanBoard {
 		});
 	}
 
+	private deleteItem(item: TodoItem): void {
+		const index = this.items.findIndex(i => i.id === item.id);
+		if (index > -1) {
+			this.items.splice(index, 1);
+			this.render();
+			this.triggerUpdate();
+		}
+	}
+
 	private setupDropZone(container: HTMLElement, state: TodoState): void {
-		container.addEventListener('dragover', (e) => {
+		container.addEventListener('dragover', (e: DragEvent) => {
 			e.preventDefault();
-			if (!this.draggedItem) return;
+			this.dragOutsideStartTime = Date.now(); // Reset timer while inside
+			// Check if it's our own item OR an external drop (files or text)
+			const isExternal = e.dataTransfer?.types.includes('Files') || e.dataTransfer?.types.includes('text/plain');
+			if (!this.draggedItem && !isExternal) return;
 
 			container.addClass('kanban-drag-over');
 
@@ -176,7 +235,7 @@ export class KanbanBoard {
 			}
 		});
 
-		container.addEventListener('dragleave', (e) => {
+		container.addEventListener('dragleave', (e: DragEvent) => {
 			const relatedTarget = e.relatedTarget as HTMLElement | null;
 			if (!relatedTarget || !container.contains(relatedTarget)) {
 				container.removeClass('kanban-drag-over');
@@ -184,15 +243,62 @@ export class KanbanBoard {
 			}
 		});
 
-		container.addEventListener('drop', (e) => {
+		container.addEventListener('drop', (e: DragEvent) => {
 			e.preventDefault();
 			container.removeClass('kanban-drag-over');
 			container.querySelector('.kanban-drop-indicator')?.remove();
 
-			if (!this.draggedItem) return;
-
 			const afterElement = this.getDragAfterElement(container, e.clientY);
-			this.moveItem(this.draggedItem, state, afterElement?.dataset['id']);
+			const beforeId = afterElement?.dataset['id'];
+
+			if (this.draggedItem) {
+				this.moveItem(this.draggedItem, state, beforeId);
+			} else {
+				// Handle external drop
+				const text = e.dataTransfer?.getData('text/plain');
+				if (text) {
+					const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
+					for (const line of lines) {
+						let cardText = line;
+
+						// Handle obsidian:// URLs
+						if (cardText.startsWith('obsidian://open?')) {
+							try {
+								const url = new URL(cardText);
+								const filePath = url.searchParams.get('file');
+								if (filePath) {
+									const decodedPath = decodeURIComponent(filePath);
+									const parts = decodedPath.split('/');
+									let basename = parts[parts.length - 1] || '';
+									if (basename.endsWith('.md')) {
+										basename = basename.substring(0, basename.length - 3);
+									}
+									cardText = basename;
+								}
+							} catch (err) {
+								// Fallback to original text
+							}
+						}
+
+						// If it looks like a path or filename and isn't already a link, make it one
+						if (cardText && !cardText.startsWith('[[') && !cardText.endsWith(']]') && !cardText.startsWith('http')) {
+							cardText = `[[${cardText}]]`;
+						}
+
+						const newItem: TodoItem = {
+							id: crypto.randomUUID(),
+							text: cardText,
+							state: state,
+							originalMarker: state === 'done' ? 'x' : state === 'in-progress' ? '/' : ' ',
+							children: [],
+						};
+
+						this.insertItem(newItem, state, beforeId, true);
+					}
+					this.render();
+					this.triggerUpdate();
+				}
+			}
 		});
 	}
 
@@ -223,10 +329,14 @@ export class KanbanBoard {
 	}
 
 	private moveItem(item: TodoItem, newState: TodoState, beforeId?: string): void {
+		this.insertItem(item, newState, beforeId);
+	}
+
+	private insertItem(item: TodoItem, newState: TodoState, beforeId?: string, silent = false): void {
 		// Update item state
 		item.state = newState;
 
-		// Remove from current position
+		// Remove from current position if it exists
 		const index = this.items.findIndex(i => i.id === item.id);
 		if (index > -1) {
 			this.items.splice(index, 1);
@@ -265,8 +375,10 @@ export class KanbanBoard {
 		}
 
 		// Re-render and notify
-		this.render();
-		this.onUpdate(itemsToMarkdown(this.items, this.ignoredLines));
+		if (!silent) {
+			this.render();
+			this.triggerUpdate();
+		}
 	}
 
 	private addNewItem(state: TodoState): void {
@@ -278,20 +390,7 @@ export class KanbanBoard {
 			children: [],
 		};
 
-		// Find position to insert based on state order
-		const stateOrder = STATE_ORDER;
-		const targetStateIndex = stateOrder.indexOf(state);
-
-		let insertIndex = 0;
-		for (let i = 0; i < this.items.length; i++) {
-			const itemStateIndex = stateOrder.indexOf(this.items[i]!.state);
-			if (itemStateIndex <= targetStateIndex) {
-				insertIndex = i + 1;
-			}
-		}
-
-		this.items.splice(insertIndex, 0, newItem);
-		this.render();
+		this.insertItem(newItem, state);
 
 		// Find the new card and start editing it
 		const newCard = this.container.querySelector(`[data-id="${newItem.id}"]`) as HTMLElement;
@@ -313,6 +412,10 @@ export class KanbanBoard {
 		input.rows = 1;
 
 		textEl.replaceWith(input);
+
+		// Add suggestions for tags and files
+		new KanbanSuggest(this.app, input);
+
 		input.focus();
 		input.select();
 
@@ -330,7 +433,7 @@ export class KanbanBoard {
 				this.items.splice(index, 1);
 			}
 			this.render();
-			this.onUpdate(itemsToMarkdown(this.items, this.ignoredLines));
+			this.triggerUpdate();
 		};
 
 		const save = () => {
@@ -339,10 +442,10 @@ export class KanbanBoard {
 				// Remove item if text is empty
 				deleteItem();
 			} else {
-				item.text = newText;
-				this.render();
-				this.onUpdate(itemsToMarkdown(this.items, this.ignoredLines));
+				item.text = newText || 'New Item';
 			}
+			this.render();
+			this.triggerUpdate();
 		};
 
 		const cancel = () => {
