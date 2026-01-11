@@ -544,9 +544,9 @@ export class KanbanBoard {
 			if (newText === '') {
 				// Remove item if text is empty
 				deleteItem();
-			} else {
-				item.text = newText || 'New Item';
+				return;
 			}
+			item.text = newText || 'New Item';
 			this.render();
 			this.triggerUpdate();
 		};
