@@ -58,6 +58,17 @@ Simply create a `todo` code block with checkbox items:
 
 ## Installation
 
+### Using BRAT (Recommended)
+The easiest way to install and keep the plugin updated, especially useful for mobile:
+
+1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) from Obsidian's Community Plugins
+2. Open BRAT settings (Settings → BRAT)
+3. Click "Add Beta plugin"
+4. Enter: `https://github.com/ldomaradzki/obsidian-kanban-block`
+5. Enable the plugin in Settings → Community Plugins
+
+BRAT will automatically check for updates and notify you when new versions are available. Perfect for mobile users who can't manually copy files!
+
 ### Manual Installation
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/ldomaradzki/obsidian-kanban-block/releases).
 2. Create a folder named `obsidian-kanban-block` in your vault's `.obsidian/plugins/` directory.
