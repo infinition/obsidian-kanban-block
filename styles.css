@@ -231,16 +231,20 @@
 }
 
 /* Mobile Responsiveness */
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 768px) {
 	.kanban-board {
-		gap: 8px;
+		flex-direction: column;
+		gap: 12px;
 		padding: 4px;
+		overflow-x: visible;
 	}
 
 	.kanban-column {
 		min-width: 0;
-		flex: 1 1 0;
-		padding: 6px;
+		max-width: none;
+		width: 100%;
+		flex: none;
+		padding: 8px;
 		border-radius: 6px;
 	}
 
@@ -280,14 +284,18 @@
 }
 
 .is-mobile .kanban-board {
-	gap: 8px;
+	flex-direction: column;
+	gap: 12px;
 	padding: 4px;
+	overflow-x: visible;
 }
 
 .is-mobile .kanban-column {
 	min-width: 0;
-	flex: 1 1 0;
-	padding: 6px;
+	max-width: none;
+	width: 100%;
+	flex: none;
+	padding: 8px;
 	border-radius: 6px;
 }
 
